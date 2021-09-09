@@ -69,13 +69,17 @@ public:
                     if (headNext == tail){
                         qWarning() << "ringbuffer overflowed; can't put a new frame";
                         overflowed = true;
-                        continue;
+                        continue; // maybe break with loss of packet
                     }
                 }
-                while (m_ring.lastHead.compare_exchange_weak(head, headNext, std::memory_order_release, std::memory_order_relaxed));
+                while (!m_ring.lastHead.compare_exchange_weak(head, headNext, std::memory_order_release, std::memory_order_relaxed));
                 // at this point we acquired a new cell for our frame
                 auto& epacket = m_ring.buffer[head];
                 epacket = reinterpret_cast<EPacketCell&&>(pkt); // let's use move operator because pkt will be destroyed anyway
+                while (m_ring.lastHead != head){    // wait
+                     QThread::sleep(0);
+                }
+                m_ring.lastHead = headNext; // relaxed?
             } else if (rc == 0) {
                 /* No packets */
             } else /* rc < 0 */ {

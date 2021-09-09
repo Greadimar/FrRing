@@ -1,6 +1,7 @@
 #include "frameringbuffer.h"
 
-void Consumer::setProcesser(const std::function<void (RawMsg &&)> &newProcesser)
+
+void Consumer::setCbProcess(const std::function<void(RawMsg &&)> &newCbProcess)
 {
-    processer = newProcesser;
+    cbProcess = newCbProcess;
 }
