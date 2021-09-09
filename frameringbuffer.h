@@ -144,7 +144,7 @@ class Consumer: public QThread{
             while (m_ring.lastTail != tail){    // wait
                  QThread::sleep(0);
             }
-            m_ring.lastReady.store(tailNext, std::memory_order_relaxed);
+            m_ring.lastTail.store(tailNext, std::memory_order_relaxed);
 
         }
     }
