@@ -7,7 +7,7 @@
 #include <cstring>
 #include <bit>
 #define CACHE_LINE_SIZE 64 // 64 bytes cache line size for x86-64 processors // tosdfsd
-constexpr int CIRCULAR_BUFFER_SIZE = 0x1000000; // power of 2
+constexpr int CIRCULAR_BUFFER_SIZE = 0x10000; // power of 2
 struct alignas(CACHE_LINE_SIZE) LocalState
 {
     char* buffer;
@@ -27,6 +27,7 @@ constexpr bool is_power_of_two(int x)
 
 struct StatMonitor{
     std::atomic_int bufferFullCount{0};
+    std::atomic_int overlaps{0};
 };
 
 template<int bufSize = CIRCULAR_BUFFER_SIZE>
@@ -66,12 +67,11 @@ public:
         const int& headpos = _ring.writerState.pos;
         int free = (tailpos > headpos)? (tailpos - headpos) : (bufSize - headpos + tailpos);
         if (size > free ){
-
             return false;
         }
         const int sizeBeforeBound = std::min(size, bufSize - tailpos);
         const int sizeRest = size - sizeBeforeBound;
-        std::memcpy(_ring.writerState.buffer[_ring.writerState.pos], data, sizeBeforeBound);            //to optimize it: https://www.geeksforgeeks.org/write-memcpy/;
+        std::memcpy(_ring.writerState.buffer + _ring.writerState.pos, data, sizeBeforeBound);            //to optimize it: https://www.geeksforgeeks.org/write-memcpy/;
         std::memcpy(_ring.writerState.buffer, data + sizeBeforeBound, sizeRest);
         _ring.head.pos.store((_ring.writerState.pos + size) & _ring.overlapMaskWrite, std::memory_order_release);
         return true;
@@ -80,10 +80,10 @@ public:
         if (size > bufSize){ // unlikely
             return false;
         }
-        size_t headpos = _ring.writerState.pos; // for mp should check
-        size_t headUpdate = (headpos + size);
+        int headpos = _ring.writerState.pos; // for mp should check
+        int headUpdate = (headpos + size);
         if (headUpdate < bufSize){                       //no overlap
-            size_t tailpos = _ring.tail.pos.load(std::memory_order_acquire);
+            int tailpos = _ring.tail.pos.load(std::memory_order_acquire);
             if (headUpdate < tailpos){                                            // |xxxxH---HU--Txx|
                 std::memcpy(_ring.writerState.buffer, data, size);
             }
@@ -97,14 +97,15 @@ public:
                 }
             }
         }
-        else if (headUpdate > bufSize){                   //overlap unlikely
-            size_t tailpos = _ring.tail.pos.load(std::memory_order_acquire);
+        else if (headUpdate >= bufSize){                   //overlap unlikely
+            _ring.monitor.overlaps.fetch_add(1, std::memory_order_relaxed);
+            int tailpos = _ring.tail.pos.load(std::memory_order_acquire);
             headUpdate &= _ring.overlapMaskWrite;
             if ((headUpdate) < tailpos){
                 if (tailpos < headpos){                                           // |--HU---TxxxxH--|
                     int sizeBeforeBound = bufSize - size;
                     int sizeRest = size - sizeBeforeBound;
-                    std::memcpy(_ring.writerState.buffer[headpos], data, sizeBeforeBound);            //to optimize it: https://www.geeksforgeeks.org/write-memcpy/;
+                    std::memcpy(_ring.writerState.buffer + headpos, data, sizeBeforeBound);            //to optimize it: https://www.geeksforgeeks.org/write-memcpy/;
                     std::memcpy(_ring.writerState.buffer, data + sizeBeforeBound, sizeRest);
                 }
                 else{
@@ -139,7 +140,7 @@ public:
 
         const int sizeBeforeBound = std::min(size, bufSize - headpos);
         const int sizeRest = size - sizeBeforeBound;
-        std::memcpy(_ring.readerState.buffer[_ring.readerState.pos], data, sizeBeforeBound);            //to optimize it: https://www.geeksforgeeks.org/write-memcpy/;
+        std::memcpy(_ring.readerState.buffer + _ring.readerState.pos, data, sizeBeforeBound);            //to optimize it: https://www.geeksforgeeks.org/write-memcpy/;
         std::memcpy(_ring.readerState.buffer, data + sizeBeforeBound, sizeRest);
         _ring.tail.pos.store((_ring.readerState.pos + size) & _ring.overlapMaskRead);
         return false;
