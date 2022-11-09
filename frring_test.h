@@ -32,26 +32,45 @@ public:
     void runProducerInThread(){
         std::thread th([=](){
             auto t = std::chrono::system_clock::now();
-            for (int i = 0; i < bufSize / chunkSize; i++)
-                producer.enqueue(inBuf.data() + i* chunkSize, chunkSize);
+            for (int i = 0; i < bufSize / chunkSize; i++){
+                int tries = 0; int maxTries = 500000;
+                while (!producer.enqueue(inBuf.data() + i* chunkSize, chunkSize)){
+                    tries++;
+                    if (tries >= maxTries){
+                        std::cout << " buffer stuck" << std::endl;
+                       // break;
+                    }
+
+                }
+
+            }
             auto t2 = std::chrono::system_clock::now();
             auto t3 = t2-t;
             std::cout <<"prod completed in" << t3.count() << "msecs" << std::endl;
             ready++;
         });
-        th.detach();
+        th.join();
     };
     void runConsumerInThread(){
         std::thread th([=](){
-             auto t = std::chrono::system_clock::now();
-            for (int i = 0; i < bufSize / chunkSize; i++)
-                consumer.dequeue(outBuf.data() + i*chunkSize, chunkSize);
+            auto t = std::chrono::system_clock::now();
+            for (int i = 0; i < bufSize / chunkSize; i++){
+                int tries = 0; int maxTries = 500000;
+                while (!consumer.dequeue(outBuf.data() + i*chunkSize, chunkSize)){
+                    tries++;
+                    if (tries >= maxTries){
+                        std::cout << " buffer stuck" << std::endl;
+                       // break2;
+                    }
+
+                }
+            }
             auto t2 = std::chrono::system_clock::now();
             auto t3 = t2-t;
             std::cout <<"cons completed in" << t3.count() << "msecs" << std::endl;
             ready++;
         });
-        th.detach();
+        th.join();
     }
 };
 
