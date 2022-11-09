@@ -15,5 +15,6 @@ int main(int argc, char *argv[])
     }
     std::cout << "test.mon full w r : " << test.ring.writerMon.bufferFullCount  <<" " <<test.ring.readerMon.bufferFullCount <<  std::endl;
     std::cout << "test.mon overl w r : "  << test.ring.writerMon.overlaps  <<" " <<test.ring.readerMon.overlaps <<  std::endl;
+    std::cout << "comp: " << std::equal(test.inBuf.begin(), test.inBuf.end(), test.outBuf.begin(), test.outBuf.end()) <<std::endl;
     //return a.exec();
 }

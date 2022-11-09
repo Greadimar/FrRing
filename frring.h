@@ -8,7 +8,7 @@
 #include <bit>
 #include <iostream>
 #define CACHE_LINE_SIZE 64 // 64 bytes cache line size for x86-64 processors // tosdfsd
-constexpr int CIRCULAR_BUFFER_SIZE = 0x10000; // power of 2
+constexpr int CIRCULAR_BUFFER_SIZE = 0x1000000; // power of 2
 struct alignas(CACHE_LINE_SIZE) LocalState
 {
     char* buffer;
@@ -19,15 +19,14 @@ struct alignas(CACHE_LINE_SIZE) SharedState
     std::atomic_int pos;
 };
 
-//#define NUMBER_OF_SLOTS 2190 //2190 =  10 MB (Buffer Size) / 4.688 KB (Size of each buffer)
-//#define MAX_CLAIM_ATTEMPTS 500000
+
 constexpr bool is_power_of_two(int x)
 {
     return x && ((x & (x-1)) == 0);
 }
 
-struct StatMonitor{
-    std::atomic_int bufferFullCount{0};
+struct alignas(CACHE_LINE_SIZE) StatMonitor{
+    std::atomic_int declines{0};        //buffer is full (can't write), or buffer is empty(can't read)
     std::atomic_int overlaps{0};
 };
 
@@ -38,11 +37,13 @@ public:
     static_assert(is_power_of_two(bufSize), "please, provide size of buffer as power of 2");
     FrRing():
         writerState{new char[bufSize], 0},
-        readerState(writerState),
+        readerState{writerState.buffer, 0},
         head{0},
         tail{0}{
     };
-
+    ~FrRing(){
+        delete[] writerState.buffer;
+    }
     //dequeue
     //enqueue_n
     //dequeue_n
@@ -68,19 +69,23 @@ public:
         int tailpos = _ring.tail.pos.load(std::memory_order_acquire);
         const int& headpos = _ring.writerState.pos;
         int free = (tailpos > headpos)? (tailpos - headpos) : (bufSize - headpos + tailpos);
+        //std::cout << "enq: t, h, s: " << tailpos <<  " " << headpos <<  " " << size << std::endl;
+                  //<< " " << _ring.writerMon.bufferFullCount << " "  << _ring.writerMon.overlaps<< std::endl;
         if (size > free ){
+            std::cout << "full enq s, f " << size <<  " " << free << std::endl;
             _ring.writerMon.bufferFullCount.fetch_add(1, std::memory_order_relaxed);
             return false;
         }
-        const int sizeBeforeBound = std::min(size, bufSize - tailpos);
+        const int sizeBeforeBound = std::min(size, bufSize - headpos);
         const int sizeRest = size - sizeBeforeBound;
         if (sizeRest > 0){
+           // std::cout << "enq overlap " << sizeRest << std::endl;
             _ring.writerMon.overlaps.fetch_add(1, std::memory_order_relaxed);
         }
         std::memcpy(_ring.writerState.buffer + _ring.writerState.pos, data, sizeBeforeBound);            //to optimize it: https://www.geeksforgeeks.org/write-memcpy/;
         std::memcpy(_ring.writerState.buffer, data + sizeBeforeBound, sizeRest);
-
-        _ring.head.pos.store((_ring.writerState.pos + size) & _ring.overlapMaskWrite, std::memory_order_release);
+        _ring.writerState.pos = (_ring.writerState.pos + size ) & _ring.overlapMaskWrite;
+        _ring.head.pos.store(_ring.writerState.pos , std::memory_order_release);
         return true;
     }
     bool enqueue(char* data, int size){
@@ -90,8 +95,8 @@ public:
         int headpos = _ring.writerState.pos; // for mp should check
         int headUpdate = (headpos + size);
         int tailpos = _ring.tail.pos.load(std::memory_order_acquire);
-//        std::cout << "enq: t, h, hu bf: " << tailpos <<  " " << headpos <<  " " << headUpdate
-//                  << " " << _ring.writerMon.bufferFullCount << " "  << _ring.writerMon.overlaps<< std::endl;
+        std::cout << "enq: t, h, hu bf: " << tailpos <<  " " << headpos <<  " " << headUpdate
+                  << " " << _ring.writerMon.bufferFullCount << " "  << _ring.writerMon.overlaps<< std::endl;
         if (headUpdate < bufSize){                       //no overlap
             if (headUpdate < tailpos){                                            // |xxxxH---HU--Txx|
                 std::memcpy(_ring.writerState.buffer + headpos, data, size);
@@ -138,28 +143,32 @@ class FrConsumer{
 public:
     FrConsumer(FrRing<bufSize>& ring): _ring(ring){}
     FrRing<bufSize>& _ring;
-    inline bool isAvailable(int size, int headpos, int tailpos){
-        return size < ((headpos > tailpos)? (headpos - tailpos) : (bufSize - tailpos + headpos));
+    inline bool isAvailable(int size, int headpos, int tailpos){ // 100, 10000, 9900 // false? should be true
+        return size <= ((headpos >= tailpos)? (headpos - tailpos) : (bufSize - tailpos + headpos));
     }
     bool dequeue2(char* data, int size){
         int headpos = _ring.head.pos.load(std::memory_order_acquire);
         const int& tailpos = _ring.readerState.pos;
+        //std::cout << "deq: t, h, s: " << tailpos <<  " " << headpos <<  " " << size << std::endl;
         if (!isAvailable(size, headpos, tailpos)){
+            std::cout << "deq s, is empty " << " t, h, s: " << tailpos <<  " " << headpos <<  " " << size << std::endl;
              _ring.readerMon.bufferFullCount.fetch_add(1, std::memory_order_relaxed);
             return false;
         }
         //        int available = (headpos > tailpos)? (headpos - tailpos) : (bufSize - tailpos + headpos);
         //        if (size > available ) return false;
 
-        const int sizeBeforeBound = std::min(size, bufSize - headpos);
+        const int sizeBeforeBound = std::min(size, bufSize - tailpos);
         const int sizeRest = size - sizeBeforeBound;
         if (sizeRest > 0){
+           // std::cout << "deq overlap " << sizeRest << std::endl;
             _ring.readerMon.overlaps.fetch_add(1, std::memory_order_relaxed);
         }
-        std::memcpy(_ring.readerState.buffer + _ring.readerState.pos, data, sizeBeforeBound);            //to optimize it: https://www.geeksforgeeks.org/write-memcpy/;
-        std::memcpy(_ring.readerState.buffer, data + sizeBeforeBound, sizeRest);
-        _ring.tail.pos.store((_ring.readerState.pos + size) & _ring.overlapMaskRead);
-        return false;
+        std::memcpy(data, _ring.readerState.buffer + _ring.readerState.pos, sizeBeforeBound);            //to optimize it: https://www.geeksforgeeks.org/write-memcpy/;
+        std::memcpy(data + sizeBeforeBound, _ring.readerState.buffer, sizeRest);
+        _ring.readerState.pos = (_ring.readerState.pos + size) & _ring.overlapMaskRead;
+        _ring.tail.pos.store(_ring.readerState.pos);
+        return true;
     }
     bool dequeue(char* data, int size){
         if (size > bufSize){ // unlikely
