@@ -1,6 +1,6 @@
 #ifndef FRRING_TEST_H
 #define FRRING_TEST_H
-#include "../frring.h"
+#include "frring.h"
 #include <thread>
 #include <chrono>
 #include <iostream>
@@ -26,11 +26,10 @@ public:
     const int bufSize{10000}; //100mb;
     const int chunkSize{100};
     std::atomic_int ready{0};
-    FrProducer< producer{ring};
+    FrProducer<size> producer{ring};
     FrConsumer<size> consumer{ring};
     const int sizeToWrite{1500};
     const int sizeToRead{1500};
-
     void runProducerInThread(){
         std::thread th([=](){
             auto t = std::chrono::system_clock::now();
