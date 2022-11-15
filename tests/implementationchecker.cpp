@@ -1,6 +1,9 @@
 #include "implementationchecker.h"
+#include <gtest/gtest.h>
+#include <algorithm>
 
-ImplementationChecker::ImplementationChecker()
+
+bool ImplementationChecker::checkInAndOut()
 {
-
+    return std::equal(inBuf.begin(), inBuf.end(), outBuf.begin(), outBuf.end());
 }
