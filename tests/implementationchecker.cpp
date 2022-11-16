@@ -3,7 +3,14 @@
 #include <algorithm>
 
 
-bool ImplementationChecker::checkInAndOut()
+bool ImplementationChecker::checkInAndOut(int chunk)
 {
-    return std::equal(inBuf.begin(), inBuf.end(), outBuf.begin(), outBuf.end());
+    int counter{0};
+    bool res = std::equal(inBuf.begin(), inBuf.begin() + (inBuf.size() - (inBuf.size()%chunk)),
+                      outBuf.begin(), outBuf.begin() + (outBuf.size() - (outBuf.size()%chunk))
+                          ,[&counter](auto in, auto out){
+        counter++;
+        return in == out;
+    });
+    return res;
 }

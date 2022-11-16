@@ -21,14 +21,14 @@ public:
         //std::cout << "enq: t, h, s: " << tailpos <<  " " << headpos <<  " " << size << std::endl;
                   //<< " " << _ring.writerMon.bufferFullCount << " "  << _ring.writerMon.overlaps<< std::endl;
         if (size > free ){
-            //std::cout << "full enq s, f " << size <<  " " << free << std::endl;
+           // std::cout << "full enq s, f " << size <<  " " << free << std::endl;
             _ring.writerMon.declines.fetch_add(1, std::memory_order_relaxed);
             return false;
         }
         const int sizeBeforeBound = std::min(size, bufSize - headpos);
         const int sizeRest = size - sizeBeforeBound;
         if (sizeRest > 0){
-           // std::cout << "enq overlap " << sizeRest << std::endl;
+            //std::cout << "enq overlap " << sizeRest << std::endl;
             _ring.writerMon.overlaps.fetch_add(1, std::memory_order_relaxed);
         }
         std::memcpy(_ring.writerState.buffer + _ring.writerState.pos, data, sizeBeforeBound);            //to optimize it: https://www.geeksforgeeks.org/write-memcpy/;
@@ -51,10 +51,10 @@ public:
     bool dequeue(char* data, int size){
         int headpos = _ring.head.pos.load(std::memory_order_acquire);
         const int& tailpos = _ring.readerState.pos;
-        //std::cout << "deq: t, h, s: " << tailpos <<  " " << headpos <<  " " << size << std::endl;
+       // std::cout << "deq: t, h, s: " << tailpos <<  " " << headpos <<  " " << size << std::endl;
         if (!isAvailable(size, headpos, tailpos)){
-            //std::cout << "deq s, is empty " << " t, h, s: " << tailpos <<  " " << headpos <<  " " << size << std::endl;
-             _ring.readerMon.declines.fetch_add(1, std::memory_order_relaxed);
+         //   std::cout << "deq s, is empty " << " t, h, s: " << tailpos <<  " " << headpos <<  " " << size << std::endl;
+            _ring.readerMon.declines.fetch_add(1, std::memory_order_relaxed);
             return false;
         }
         //        int available = (headpos > tailpos)? (headpos - tailpos) : (bufSize - tailpos + headpos);
@@ -63,7 +63,7 @@ public:
         const int sizeBeforeBound = std::min(size, bufSize - tailpos);
         const int sizeRest = size - sizeBeforeBound;
         if (sizeRest > 0){
-           // std::cout << "deq overlap " << sizeRest << std::endl;
+            //std::cout << "deq overlap " << sizeRest << std::endl;
             _ring.readerMon.overlaps.fetch_add(1, std::memory_order_relaxed);
         }
         std::memcpy(data, _ring.readerState.buffer + _ring.readerState.pos, sizeBeforeBound);            //to optimize it: https://www.geeksforgeeks.org/write-memcpy/;

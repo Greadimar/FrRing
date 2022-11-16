@@ -5,14 +5,14 @@
 #include "../src/implementations/frring_ifbranches.h"
 #include <algorithm>
 #include <future>
+using namespace std::chrono_literals;
 
 
 struct CheckSettings{
     int bufSize{10000};
-    int chunkSize{100};
     int sizeToWrite{1500};
     int sizeToRead{1500};
-    int maxTriesBeforeStuck{100000};
+    int maxTriesBeforeStuck{10000000};
 };
 
 class ImplementationChecker
@@ -34,9 +34,9 @@ public:
         bool complete{false};
         std::chrono::system_clock::duration timeToComplete;
     };
-    std::future<Result> prodRes;
-    std::future<Result> consRes;
-    bool checkInAndOut();
+    std::future<Result> prodFut;
+    std::future<Result> consFut;
+    bool checkInAndOut(int chunk);
     template <class TProdImpl, class TConsImpl>
     void test(){
         TProdImpl frProd(ring);
@@ -46,10 +46,15 @@ public:
         auto prod = [=, &producer](){
             bool complete{true};
             auto start = std::chrono::system_clock::now();
-            for (int i = 0; i < sets.bufSize / sets.chunkSize; i++){
+            for (int i = 0; i < sets.bufSize / sets.sizeToWrite; i++){
                 int tries = 0; int maxTries = sets.maxTriesBeforeStuck;
-                while (!producer.enqueue(inBuf.data() + i* sets.chunkSize, sets.chunkSize)){
+                while (!producer.enqueue(inBuf.data() + i* sets.sizeToWrite, sets.sizeToWrite)){
+                    //few tries - > sleep 1msec
                     tries++;
+                    if (tries % (maxTries/4) == 0){
+                        std::cout <<  "sleep producer!" << std::endl;
+                        std::this_thread::sleep_for(1ms);
+                    }
                     if (tries >= maxTries){
                         std::cout << "enq buffer stuck" << std::endl;
                         complete = false;
@@ -61,17 +66,21 @@ public:
             Result r{complete, end - start};
             return r;
         };
-        prodRes = std::async(prod);
+        prodFut = std::async(prod);
         //std::cout <<"prod completed in" << t3.count() << "msecs" <<"  " << std::this_thread::get_id() << std::endl;
     }
     template <class TConsImpl> void runConsumerInThread(TConsImpl& consumer){
         auto cons = [=, &consumer](){
             bool complete{true};
             auto start = std::chrono::system_clock::now();
-            for (int i = 0; i < sets.bufSize / sets.chunkSize; i++){
+            for (int i = 0; i < sets.bufSize / sets.sizeToRead; i++){
                 int tries = 0; int maxTries = sets.maxTriesBeforeStuck;
-                while (!consumer.dequeue(outBuf.data() + i* sets.chunkSize, sets.chunkSize)){
+                while (!consumer.dequeue(outBuf.data() + i* sets.sizeToRead, sets.sizeToRead)){
                     tries++;
+                    if (tries % (maxTries/4) == 0){
+                        std::cout <<  "sleep consumer!" << std::endl;
+                        std::this_thread::sleep_for(1ms);
+                    }
                     if (tries >= maxTries){
                         std::cout << "deq buffer stuck" << std::endl;
                         complete = false;
@@ -83,7 +92,7 @@ public:
             Result r{complete, end - start};
             return r;
         };
-        consRes = std::async(cons);
+        consFut = std::async(cons);
        // std::cout <<"prod completed in" << t3.count() << "msecs" <<"  " << std::this_thread::get_id() << std::endl;
     }
 };
