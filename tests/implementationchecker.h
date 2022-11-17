@@ -52,8 +52,8 @@ public:
                     //few tries - > sleep 1msec
                     tries++;
                     if (tries % (maxTries/4) == 0){
-                        std::cout <<  "sleep producer!" << std::endl;
-                        std::this_thread::sleep_for(1ms);
+                       // std::cout <<  "sleep producer!" << std::endl;
+                        std::this_thread::sleep_for(10ms);
                     }
                     if (tries >= maxTries){
                         std::cout << "enq buffer stuck" << std::endl;
@@ -78,8 +78,8 @@ public:
                 while (!consumer.dequeue(outBuf.data() + i* sets.sizeToRead, sets.sizeToRead)){
                     tries++;
                     if (tries % (maxTries/4) == 0){
-                        std::cout <<  "sleep consumer!" << std::endl;
-                        std::this_thread::sleep_for(1ms);
+                        //std::cout <<  "sleep consumer!" << std::endl;
+                        std::this_thread::sleep_for(10ms);
                     }
                     if (tries >= maxTries){
                         std::cout << "deq buffer stuck" << std::endl;
