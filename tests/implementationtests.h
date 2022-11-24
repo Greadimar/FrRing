@@ -124,7 +124,7 @@ TEST(IfBranch_impl, setsOverlapMultipleOfBs){
 TEST(IfBranch_impl, setsOverlapBigBySmall){
         doTest<FrProducer_ifBranches<FrRingDetails::CIRCULAR_BUFFER_SIZE>,
               FrConsumer_ifBranches<FrRingDetails::CIRCULAR_BUFFER_SIZE>>
-                (setsOverlapBigBySmall, "ifBranches-setsOverlapMultipleOfBs");
+                (setsOverlapBigBySmall, "ifBranches-setsOverlapBigBySmall");
 }
 
 }
