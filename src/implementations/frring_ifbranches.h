@@ -21,10 +21,8 @@ public:
         int headpos = _ring.writerState.pos; // for mp should check
         int headUpdate = (headpos + size);
         int tailpos = _ring.tail.pos.load(std::memory_order_acquire);
-//                std::cout << "enq: t, h, hu bf: " << tailpos <<  " " << headpos <<  " " << headUpdate
-//                          << " " << _ring.writerMon.declines << " "  << _ring.writerMon.overlaps<<" " <<bufSize << std::endl;
         if (headUpdate < bufSize){                       //no overlap
-            if (headUpdate < tailpos){                                            // |xxxxH---HU--Txx|
+            if (headUpdate <= tailpos){                                            // |xxxxH---HU--Txx|
                 std::memcpy(_ring.writerState.buffer + headpos, data, size);
             }
             else{
@@ -32,8 +30,7 @@ public:
                     std::memcpy(_ring.writerState.buffer + headpos, data, size);
                 }
                 else{
-//                    std::cout << "enq 1: t, h, hu bf: " << tailpos <<  " " << headpos <<  " " << headUpdate
-//                              << " " << _ring.writerMon.declines << " "  << _ring.writerMon.overlaps<< std::endl;
+
                     _ring.writerMon.declines.fetch_add(1, std::memory_order_relaxed);
                     return false;                   //buffer is full             // |xxH----TxxHUxxx|
                 }
@@ -42,23 +39,19 @@ public:
         else{ //if (headUpdate >= bufSize)                 //overlap unlikely
             _ring.writerMon.overlaps.fetch_add(1, std::memory_order_relaxed);
             headUpdate &= _ring.overlapMaskWrite;
-            if ((headUpdate) < tailpos){
-                if (tailpos < headpos){                                           // |--HU---TxxxxH--|
+            if ((headUpdate) <= tailpos){
+                if (tailpos <= headpos){                                           // |--HU---TxxxxH--|
                     int sizeBeforeBound = bufSize - headpos;
                     int sizeRest = size - sizeBeforeBound;
                     std::memcpy(_ring.writerState.buffer + headpos, data, sizeBeforeBound);            //to optimize it: https://www.geeksforgeeks.org/write-memcpy/;
                     std::memcpy(_ring.writerState.buffer, data + sizeBeforeBound, sizeRest);
                 }
                 else{
-//                    std::cout << "enq 2: t, h, hu bf: " << tailpos <<  " " << headpos <<  " " << headUpdate
-//                              << " " << _ring.writerMon.declines << " "  << _ring.writerMon.overlaps<< std::endl;
                     _ring.writerMon.declines.fetch_add(1, std::memory_order_relaxed);
                     return false;    //buffer is full                            // |xxHUxxxH-----Tx|
                 }
             }
             else{
-//                std::cout << "enq 3: t, h, hu bf: " << tailpos <<  " " << headpos <<  " " << headUpdate
-//                          << " " << _ring.writerMon.declines << " "  << _ring.writerMon.overlaps<< std::endl;
                 _ring.writerMon.declines.fetch_add(1, std::memory_order_relaxed);
                 return false;       //buffer is full                             // |--TxxHUxxxxxH--|
             }
@@ -81,8 +74,6 @@ public:
         int tailPos = _ring.readerState.pos; // for mp should check
         int tailUpdate = (tailPos + size);
         int headpos = _ring.head.pos.load(std::memory_order_acquire);
-//                std::cout << "deq: t, tu, h: " << tailPos << " " << tailUpdate <<   " " << headpos
-//                          << " " << _ring.readerMon.declines << " "  << _ring.readerMon.overlaps<< std::endl;
         if (tailUpdate < bufSize){                       //no overlap
             if (tailUpdate <= headpos){                                                   // |---TxxxxTUxxxH--|
                 std::memcpy(data, _ring.readerState.buffer + tailPos, size);
@@ -93,34 +84,30 @@ public:
                 }
                 else{
                     _ring.readerMon.declines.fetch_add(1, std::memory_order_relaxed);
-//                    std::cout << "deq 1 e: t, tu, h: " << tailPos << " " << tailUpdate <<   " " << headpos
-//                              << " " << _ring.readerMon.declines << " "  << _ring.readerMon.overlaps<< std::endl;
+
                     return false;                       //buffer is empty                //|---TxxxxH--TU-|
                 }
             }
         }
         else{ //(tailUpdate >= bufSize)                  //overlap unlikely
             _ring.readerMon.overlaps.fetch_add(1, std::memory_order_relaxed);
-            //int tailpos = _ring.tail.pos.load(std::memory_order_acquire);
             tailUpdate &= _ring.overlapMaskRead;
             if ((tailUpdate) <= headpos){
-                if (headpos < tailPos){                                           // |xxHUxxH---Txx|
+                if (headpos < tailPos){                                           // |xxTUxxH---Txx|
                     int sizeBeforeBound = bufSize - tailPos;
                     int sizeRest = size - sizeBeforeBound;
                     std::memcpy(data, _ring.readerState.buffer + tailPos, sizeBeforeBound);            //to optimize it: https://www.geeksforgeeks.org/write-memcpy/;
                     std::memcpy(data + sizeBeforeBound, _ring.readerState.buffer, sizeRest);
                 }
                 else{
+
                     _ring.readerMon.declines.fetch_add(1, std::memory_order_relaxed);
-//                    std::cout << "deq 2 e: t, tu, h: " << tailPos << " " << tailUpdate <<   " " << headpos
-//                              << " " << _ring.readerMon.declines << " "  << _ring.readerMon.overlaps<< std::endl;
-                    return false;    //buffer is empty                            // |--HU---TxxxH--|
+
+                    return false;    //buffer is empty                            // |--TU---TxxxH--|
                 }
             }
             else{
-                _ring.readerMon.declines.fetch_add(1, std::memory_order_relaxed);
-//                std::cout << "deq 3 e: t, tu, h: " << tailPos << " " << tailUpdate <<   " " << headpos
-//                          << " " << _ring.readerMon.declines << " "  << _ring.readerMon.overlaps<< std::endl;
+                 _ring.readerMon.declines.fetch_add(1, std::memory_order_relaxed);
                 return false;       //buffer is empty                             // |xxH--TU---Txxx|
             }
         }
